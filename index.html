@@ -9,22 +9,18 @@
     --bg: #f6f3ee;
     --ink: #22201c;
     --muted: #8a8378;
-    --link: #2f2b26;
-    --empty: rgba(0,0,0,.06);
     --c-red: #e03b3b;
     --c-orange: #f08a24;
-    --c-yellow: #f2c81f;
+    --c-yellow: #e9b90f;
     --c-green: #3fae5a;
     --c-blue: #2f7fd8;
     --c-purple: #8a4fd0;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #161514;
+      --bg: #141312;
       --ink: #ece8e1;
       --muted: #8d877e;
-      --link: #d9d3c9;
-      --empty: rgba(255,255,255,.05);
       --c-red: #f05a5a;
       --c-orange: #f59a3e;
       --c-yellow: #f5d443;
@@ -34,74 +30,56 @@
     }
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 48px 16px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 24px; }
+  .tabs button {
+    font: inherit; color: var(--muted); background: none; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--muted) 40%, transparent);
+    border-radius: 999px; padding: 4px 12px;
   }
-  main { max-width: 1100px; margin: 0 auto; padding: 56px 16px; min-height: 100vh; display: flex; align-items: center; }
-  .chain { display: flex; flex-wrap: wrap; align-items: center; row-gap: 22px; padding-left: 14px; }
-
-  /* One link: a horizontal oval interlocking with its neighbours. Even links
-     are flatter. The inside is split into 6 equal slices; a done category fills its slice. */
-  .link {
-    position: relative;
-    width: 54px; height: 32px;
-    border: 4px solid var(--link);
-    border-radius: 16px;
-    margin-left: -14px;
-    background: transparent;
-    overflow: hidden;
-    transition: transform .2s;
-    z-index: 1;
-  }
-  .link:nth-child(even) { height: 22px; border-radius: 11px; z-index: 2; }
-  .link .seg { position: absolute; inset: 0; display: flex; border-radius: inherit; overflow: hidden; }
-  .link .seg span { flex: 1; }
-  .link.future { opacity: .3; }
-  .link.today { overflow: visible; }
-  .link.today::after {
-    content: ""; position: absolute; inset: -9px;
-    border: 2px solid var(--ink); border-radius: 22px;
-    animation: pulse 1.8s ease-out infinite;
-  }
-  @keyframes pulse { from { opacity: .8; transform: scale(.9); } to { opacity: 0; transform: scale(1.3); } }
-  @media (prefers-reduced-motion: reduce) { .link.today::after { animation: none; opacity: .5; } }
-  .link:hover { transform: translateY(-2px); }
-
+  .tabs button span { opacity: .7; margin-left: 4px; }
+  .tabs button[aria-selected="true"] { color: var(--bg); background: var(--tab, var(--ink)); border-color: var(--tab, var(--ink)); }
+  .chain { width: 100%; }
+  .chain svg { display: block; overflow: visible; }
+  .chain .today-ring { fill: none; stroke: var(--ink); stroke-width: 2; transform-box: fill-box; transform-origin: center; animation: pulse 1.8s ease-out infinite; }
+  @keyframes pulse { from { opacity: .8; transform: scale(.9); } to { opacity: 0; transform: scale(1.35); } }
+  @media (prefers-reduced-motion: reduce) { .chain .today-ring { animation: none; opacity: .5; } }
   .tip {
-    position: fixed; pointer-events: none; padding: 6px 9px; border-radius: 6px;
-    background: var(--ink); color: var(--bg); font-size: 12px; white-space: pre;
+    position: fixed; pointer-events: none; padding: 5px 8px; border-radius: 6px;
+    background: var(--ink); color: var(--bg); font-size: 12px; white-space: nowrap;
     opacity: 0; transition: opacity .1s; z-index: 10;
   }
 </style>
 </head>
 <body>
 <main>
+  <div class="tabs" id="tabs" role="tablist"></div>
   <div class="chain" id="chain"></div>
 </main>
 <div class="tip" id="tip"></div>
 <script>
-// The chain: one link per day. Reads data.json, which the GitHub Action
-// (scripts/build.py) builds on every push: day -> folders changed that day.
-const START = "2026-11-23";
+// Tabs: "all" plus one cable chain per folder, one link per day. A folder's link is
+// bright when that folder got a commit that day, faint when not (data.json, built by
+// scripts/build.py on every push). In "all", a link's strength is done/6.
+// Each chain snakes down the page so it never breaks between rows.
+const START = "2026-11-24";
 const END = "2027-05-08";
 const TZ = "Europe/Istanbul";
 
-// Rainbow order. Folder name -> color.
 const CATS = [
-  { dir: "work",      color: "var(--c-red)" },
-  { dir: "learn",     color: "var(--c-orange)" },
-  { dir: "nowaste",   color: "var(--c-yellow)" },
-  { dir: "write",     color: "var(--c-green)" },
-  { dir: "run",       color: "var(--c-blue)" },
-  { dir: "pazartesi", color: "var(--c-purple)" },
+  { dir: "work",            code: "#w", color: "var(--c-red)" },
+  { dir: "write",           code: "#r", color: "var(--c-green)" },
+  { dir: "pazartesi",       code: "#p", color: "var(--c-purple)" },
+  { dir: "run",             code: "#r", color: "var(--c-blue)" },
+  { dir: "nowaste",         code: "#n", color: "var(--c-yellow)" },
+  { dir: "workforyourself", code: "#y", color: "var(--c-orange)" },
 ];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
 const toDay = d => dayFmt.format(d);
+const getToday = () => toDay(new Date());
 
 function allDays() {
   const out = [];
@@ -111,35 +89,118 @@ function allDays() {
   return out;
 }
 
-function render(data) {
-  const today = toDay(new Date());
-  const chain = document.getElementById("chain");
-  chain.innerHTML = "";
-  for (const day of allDays()) {
-    const done = new Set(data[day] || []);
-    const el = document.createElement("div");
-    el.className = "link";
-    const seg = document.createElement("div");
-    seg.className = "seg";
-    for (const c of CATS) {
-      const s = document.createElement("span");
-      if (done.has(c.dir)) s.style.background = c.color;
-      seg.appendChild(s);
-    }
-    el.appendChild(seg);
-    if (day > today) el.classList.add("future");
-    if (day === today) el.classList.add("today");
-    const [y, mm, dd] = day.split("-");
-    const list = CATS.filter(c => done.has(c.dir)).map(c => c.dir);
-    el.dataset.tip = `${MONTHS[+mm - 1]} ${+dd}, ${y}` + (list.length ? "\n" + list.join(" · ") : "");
-    el.setAttribute("aria-label", el.dataset.tip.replace("\n", ": "));
-    chain.appendChild(el);
+// Link geometry: every link is the same oval. Each one overlaps the next and
+// they weave over/under, so they read as one interlocked cable chain.
+const LW = 46, LH = 24, SW = 3.5, PAD = 16;
+const R = LH / 2, HOOK = 16;            // distance between two hooked end-arc centers
+const STEP = LW - LH + HOOK;            // center-to-center along a row
+const ROW = 2 * (R + HOOK);             // row to row, bridged by one vertical link
+
+// Positions along a snake: left->right, one vertical link down, right->left, ...
+// a = direction of travel in degrees (0 right, 90 down, 180 left).
+function layout(n, width) {
+  const cols = Math.max(4, Math.floor((width - 2 * PAD - LW - LH) / STEP) + 1);
+  const pts = [];
+  let row = 0, col = 0, dir = 1;
+  for (let i = 0; i < n; i++) {
+    const x = PAD + LW / 2 + col * STEP;
+    const y = PAD + LH / 2 + row * ROW;
+    pts.push({ x, y, a: dir === 1 ? 0 : 180 });
+    if (i === n - 1) break;
+    if ((dir === 1 && col === cols - 1) || (dir === -1 && col === 0)) {
+      i++;
+      pts.push({ x: x + dir * (LW / 2 - R), y: y + ROW / 2, a: 90 }); // turn link
+      row++; dir = -dir;
+    } else col += dir;
   }
+  return { pts, height: PAD * 2 + LH + row * ROW };
 }
+
+const SVG = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) {
+  const e = document.createElementNS(SVG, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+const ALL = { dir: "all", code: "", color: "var(--ink)" };
+
+// One link drawn in its own frame (centered, pointing along +x).
+function linkShape(color, cls) {
+  const g = svgEl("g", {});
+  g.appendChild(svgEl("rect", { x: -LW / 2, y: -LH / 2, width: LW, height: LH, rx: LH / 2,
+    fill: "none", stroke: "var(--bg)", "stroke-width": SW + 2.5, class: cls }));
+  g.appendChild(svgEl("rect", { x: -LW / 2, y: -LH / 2, width: LW, height: LH, rx: LH / 2,
+    fill: "none", stroke: color, "stroke-width": SW, class: cls }));
+  return g;
+}
+
+function renderChain(box, cat, days, data, today) {
+  const { pts, height } = layout(days.length, box.clientWidth);
+  const svg = svgEl("svg", { width: box.clientWidth, height });
+  const defs = svgEl("defs", {});
+  // The leading-end upper quarter of a link, redrawn on top so the link passes
+  // over its neighbour at one crossing and under it at the other.
+  const clip = svgEl("clipPath", { id: "lead" });
+  clip.appendChild(svgEl("rect", { x: 0, y: -LH, width: LW, height: LH }));
+  defs.appendChild(clip);
+  const base = svgEl("g", {}), top = svgEl("g", {});
+  svg.append(defs, base, top);
+  let ring = null;
+  days.forEach((day, i) => {
+    const p = pts[i];
+    const got = data[day] || [];
+    const n = CATS.filter(c => got.includes(c.dir)).length;
+    // strength 0..1: per folder done/not done; for "all" the share of 6
+    const k = cat === ALL ? n / 6 : got.includes(cat.dir) ? 1 : 0;
+    const pct = day > today ? 12 : Math.round(22 + 78 * k);
+    const color = `color-mix(in srgb, ${cat.color} ${pct}%, var(--bg))`;
+    const tf = `translate(${p.x} ${p.y}) rotate(${p.a})`;
+    const g = linkShape(color);
+    g.setAttribute("transform", tf);
+    const [y, mm, dd] = day.split("-");
+    g.dataset.tip = `${MONTHS[+mm - 1]} ${+dd}, ${y} · ` + (cat === ALL ? `${n}/6` : cat.dir + (k ? " ✓" : ""));
+    base.appendChild(g);
+    const over = linkShape(color);
+    over.setAttribute("transform", tf);
+    over.setAttribute("clip-path", "url(#lead)");
+    over.style.pointerEvents = "none";
+    top.appendChild(over);
+    if (day === today) {
+      const w = p.a === 90 ? LH : LW, h = p.a === 90 ? LW : LH;
+      ring = svgEl("rect", { class: "today-ring", x: p.x - w / 2 - 6, y: p.y - h / 2 - 6, width: w + 12, height: h + 12, rx: (Math.min(w, h) + 12) / 2 });
+    }
+  });
+  if (ring) svg.appendChild(ring);
+  box.replaceChildren(svg);
+}
+
+const TABS = [ALL, ...CATS];
+let DATA = {};
+let current = TABS.find(t => "#" + t.dir === location.hash) || ALL;
+
+function render(data) {
+  if (data) DATA = data;
+  const tabs = document.getElementById("tabs");
+  if (!tabs.children.length) {
+    for (const t of TABS) {
+      const b = document.createElement("button");
+      b.role = "tab";
+      b.textContent = t.code ? t.code.slice(1) : t.dir;
+      b.title = t.dir;
+      b.style.setProperty("--tab", t.color);
+      b.onclick = () => { current = t; history.replaceState(null, "", "#" + t.dir); render(); };
+      tabs.appendChild(b);
+    }
+  }
+  [...tabs.children].forEach((b, k) => b.setAttribute("aria-selected", TABS[k] === current));
+  renderChain(document.getElementById("chain"), current, allDays(), DATA, getToday());
+}
+addEventListener("resize", () => render());
 
 const tipEl = document.getElementById("tip");
 document.addEventListener("mousemove", e => {
-  const t = e.target.closest(".link");
+  const t = e.target.closest("g[data-tip]");
   if (!t) { tipEl.style.opacity = 0; return; }
   tipEl.textContent = t.dataset.tip;
   tipEl.style.left = Math.min(e.clientX + 12, innerWidth - tipEl.offsetWidth - 8) + "px";
@@ -147,6 +208,7 @@ document.addEventListener("mousemove", e => {
   tipEl.style.opacity = 1;
 });
 
+// LOAD
 render({});
 fetch("data.json", { cache: "no-store" })
   .then(r => r.ok ? r.json() : {})
