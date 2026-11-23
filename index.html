@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bezel</title>
+<style>
+  :root {
+    --bg: #f6f3ee;
+    --ink: #22201c;
+    --muted: #8a8378;
+    --link: #2f2b26;
+    --empty: rgba(0,0,0,.06);
+    --c-red: #e03b3b;
+    --c-orange: #f08a24;
+    --c-yellow: #f2c81f;
+    --c-green: #3fae5a;
+    --c-blue: #2f7fd8;
+    --c-purple: #8a4fd0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161514;
+      --ink: #ece8e1;
+      --muted: #8d877e;
+      --link: #d9d3c9;
+      --empty: rgba(255,255,255,.05);
+      --c-red: #f05a5a;
+      --c-orange: #f59a3e;
+      --c-yellow: #f5d443;
+      --c-green: #55c272;
+      --c-blue: #4f97ea;
+      --c-purple: #a26fe3;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 56px 16px; min-height: 100vh; display: flex; align-items: center; }
+  .chain { display: flex; flex-wrap: wrap; align-items: center; row-gap: 22px; padding-left: 14px; }
+
+  /* One link: a horizontal oval interlocking with its neighbours. Even links
+     are flatter. The inside is split into 6 equal slices; a done category fills its slice. */
+  .link {
+    position: relative;
+    width: 54px; height: 32px;
+    border: 4px solid var(--link);
+    border-radius: 16px;
+    margin-left: -14px;
+    background: transparent;
+    overflow: hidden;
+    transition: transform .2s;
+    z-index: 1;
+  }
+  .link:nth-child(even) { height: 22px; border-radius: 11px; z-index: 2; }
+  .link .seg { position: absolute; inset: 0; display: flex; border-radius: inherit; overflow: hidden; }
+  .link .seg span { flex: 1; }
+  .link.future { opacity: .3; }
+  .link.today { overflow: visible; }
+  .link.today::after {
+    content: ""; position: absolute; inset: -9px;
+    border: 2px solid var(--ink); border-radius: 22px;
+    animation: pulse 1.8s ease-out infinite;
+  }
+  @keyframes pulse { from { opacity: .8; transform: scale(.9); } to { opacity: 0; transform: scale(1.3); } }
+  @media (prefers-reduced-motion: reduce) { .link.today::after { animation: none; opacity: .5; } }
+  .link:hover { transform: translateY(-2px); }
+
+  .tip {
+    position: fixed; pointer-events: none; padding: 6px 9px; border-radius: 6px;
+    background: var(--ink); color: var(--bg); font-size: 12px; white-space: pre;
+    opacity: 0; transition: opacity .1s; z-index: 10;
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="chain" id="chain"></div>
+</main>
+<div class="tip" id="tip"></div>
+<script>
+// The chain: one link per day. Reads data.json, which the GitHub Action
+// (scripts/build.py) builds on every push: day -> folders changed that day.
+const START = "2026-11-23";
+const END = "2027-05-08";
+const TZ = "Europe/Istanbul";
+
+// Rainbow order. Folder name -> color.
+const CATS = [
+  { dir: "work",      color: "var(--c-red)" },
+  { dir: "learn",     color: "var(--c-orange)" },
+  { dir: "nowaste",   color: "var(--c-yellow)" },
+  { dir: "write",     color: "var(--c-green)" },
+  { dir: "run",       color: "var(--c-blue)" },
+  { dir: "pazartesi", color: "var(--c-purple)" },
+];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+const toDay = d => dayFmt.format(d);
+
+function allDays() {
+  const out = [];
+  const d = new Date(START + "T12:00:00Z");
+  const end = new Date(END + "T12:00:00Z");
+  while (d <= end) { out.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1); }
+  return out;
+}
+
+function render(data) {
+  const today = toDay(new Date());
+  const chain = document.getElementById("chain");
+  chain.innerHTML = "";
+  for (const day of allDays()) {
+    const done = new Set(data[day] || []);
+    const el = document.createElement("div");
+    el.className = "link";
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    for (const c of CATS) {
+      const s = document.createElement("span");
+      if (done.has(c.dir)) s.style.background = c.color;
+      seg.appendChild(s);
+    }
+    el.appendChild(seg);
+    if (day > today) el.classList.add("future");
+    if (day === today) el.classList.add("today");
+    const [y, mm, dd] = day.split("-");
+    const list = CATS.filter(c => done.has(c.dir)).map(c => c.dir);
+    el.dataset.tip = `${MONTHS[+mm - 1]} ${+dd}, ${y}` + (list.length ? "\n" + list.join(" · ") : "");
+    el.setAttribute("aria-label", el.dataset.tip.replace("\n", ": "));
+    chain.appendChild(el);
+  }
+}
+
+const tipEl = document.getElementById("tip");
+document.addEventListener("mousemove", e => {
+  const t = e.target.closest(".link");
+  if (!t) { tipEl.style.opacity = 0; return; }
+  tipEl.textContent = t.dataset.tip;
+  tipEl.style.left = Math.min(e.clientX + 12, innerWidth - tipEl.offsetWidth - 8) + "px";
+  tipEl.style.top = e.clientY + 14 + "px";
+  tipEl.style.opacity = 1;
+});
+
+render({});
+fetch("data.json", { cache: "no-store" })
+  .then(r => r.ok ? r.json() : {})
+  .then(render)
+  .catch(err => console.warn("bezel: could not load data.json", err));
+</script>
+</body>
+</html>
